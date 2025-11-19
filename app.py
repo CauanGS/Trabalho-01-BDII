@@ -2,7 +2,7 @@ import streamlit as st
 import psycopg2
 import pandas as pd
 
-# 1. Configuração do banco NEON
+#Configuração do banco NEON
 DATABASE_URL = "postgresql://neondb_owner:npg_Iflxy7RMmnH6@ep-delicate-resonance-ahxuy5yh-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
 @st.cache_resource
@@ -11,7 +11,7 @@ def init_connection():
 
 conn = init_connection()
 
-# 2. Função geral de execução
+#Função geral de execução
 @st.cache_data(ttl=600)
 def run_query(query):
     with conn.cursor() as cur:
@@ -20,9 +20,6 @@ def run_query(query):
         data = cur.fetchall()
         return pd.DataFrame(data, columns=columns)
 
-# =====================================================================
-# CONFIGURAÇÃO DE FORMATAÇÃO DE COLUNAS
-# =====================================================================
 
 # Dicionário para renomear as colunas para um formato mais legível
 col_names = {
@@ -41,25 +38,15 @@ col_names = {
     'rn': 'Ranking'
 }
 
-# =====================================================================
-# INTERFACE PRINCIPAL
-# =====================================================================
+# Configuração da página
+st.set_page_config(page_title="One Piece Database Dashboard", layout="wide")
 
-st.set_page_config(page_title="One Piece Database Dashboard 🏴‍☠️", layout="wide")
-
-st.title("One Piece Database Dashboard 🏴‍☠️")
+st.title("One Piece Database Dashboard")
 st.markdown("## Análise de Recompensas e Afilições")
 
-# =====================================================================
-# =====================================================================
-# ====================  CONSULTAS DA HANNAH ===========================
-# =====================================================================
-# =====================================================================
 
-# =====================================================================
-# CONSULTA 1 — Piratas filtrados pela Recompensa Total do Bando
-# =====================================================================
 
+#Consulta1 - Filtro de piratas por recompensa do banco
 st.markdown("##  Piratas filtrados pela Recompensa Total do Bando")
 
 min_recompensa_bando = st.slider(
@@ -88,7 +75,7 @@ query_piratas_por_bando = f"""
 piratas_bando_df = run_query(query_piratas_por_bando)
 
 if not piratas_bando_df.empty:
-    # Aplica a renomeação
+    #renomeação
     st.dataframe(piratas_bando_df.rename(columns=col_names))
 else:
     st.info("Nenhum pirata encontrado com essa recompensa total de bando mínima.")
@@ -96,13 +83,10 @@ else:
 st.markdown("---")
 
 
-# =====================================================================
-# CONSULTA 2 — Personagens com Akuma no Mi filtrados por Espécie e Tipo de Fruta
-# =====================================================================
+#Consulta2 - Filtro de personagens com Akuma no Mi por espécie e tipo de fruta
+st.markdown("## Personagens com Akuma no Mi – Espécie e Tipo de Fruta")
 
-st.markdown("## 🧬 Personagens com Akuma no Mi – Espécie e Tipo de Fruta")
-
-# 1. Carregar espécies disponíveis
+#Carregar espécies disponíveis
 especies_df = run_query("SELECT DISTINCT NomeEspecie FROM Filiacao_Especie ORDER BY NomeEspecie;")
 frutas_df = run_query("SELECT DISTINCT TipoFruta FROM AkumaNoMi ORDER BY TipoFruta;")
 
@@ -115,7 +99,7 @@ with col1:
 with col2:
     filtro_fruta = st.selectbox("Filtrar por tipo de fruta:", tipos_fruta)
 
-# 2. Query base (Personagem + Especie + Fruta)
+#Query base
 query_personagens_fruta = """
     SELECT 
         p.NomePersonagem,
@@ -129,7 +113,7 @@ query_personagens_fruta = """
     JOIN AkumaNoMi a ON pf.NomeFruta = a.NomeFruta
 """
 
-# 3. Montar filtros
+#filtros
 condicoes = []
 if filtro_especie != "Todas":
     condicoes.append(f"f.NomeEspecie = '{filtro_especie}'")
@@ -141,12 +125,12 @@ if condicoes:
 
 query_personagens_fruta += " ORDER BY p.NomePersonagem ASC;"
 
-# 4. Executar
+
 personagens_fruta_df = run_query(query_personagens_fruta)
 
-# 5. Mostrar
+
 if not personagens_fruta_df.empty:
-    # Aplica a renomeação
+    #renomeação
     st.dataframe(personagens_fruta_df.rename(columns=col_names))
 else:
     st.info("Nenhum personagem encontrado com os filtros aplicados.")
@@ -154,11 +138,9 @@ else:
 st.markdown("---")
 
 
-# =====================================================================
-# CONSULTA 3 — Capitães de Bando (ranking por recompensa total)
-# =====================================================================
 
-st.markdown("## 🏴‍☠️ Capitães de Bando – Ranking por Recompensa Total do Bando")
+#Consulta 3 — Filtro de capitães de Bando por ranking por recompensa total cpm filtro de aliança
+st.markdown("## Capitães de Bando – Ranking por Recompensa Total do Bando")
 
 # Carregar alianças
 aliancas_df = run_query("""
@@ -172,7 +154,7 @@ aliancas = ["Todas"] + aliancas_df["nomealianca"].dropna().tolist()
 # Filtro por aliança
 filtro_alianca = st.selectbox("Filtrar por aliança:", aliancas)
 
-# Query base (sem filtro de recompensa!)
+# query base 
 query_capitaes = """
     SELECT 
         pr.NomePersonagem,
@@ -190,13 +172,13 @@ query_capitaes = """
 if filtro_alianca != "Todas":
     query_capitaes += f" WHERE b.NomeAlianca = '{filtro_alianca}'\n"
 
-# Ordenação final
+
 query_capitaes += " ORDER BY b.RecompensaTotalBando DESC;"
 
-# Executar
+
 capitaes_df = run_query(query_capitaes)
 
-# Exibir
+
 if not capitaes_df.empty:
     # Aplica a renomeação
     st.dataframe(capitaes_df.rename(columns=col_names))
@@ -209,7 +191,7 @@ st.markdown("---")
 
 st.markdown("## Periculosidade do Bando – Soma das Maiores Recompensas")
 
-# 1. Novo slider para definir o 'N' (quantos membros somar)
+#Novo slider para definir o 'N' (quantos membros somar)
 num_membros = st.slider(
     "Considerar os N membros com maiores recompensas:",
     min_value=1,
@@ -279,18 +261,14 @@ else:
 
 st.markdown("---")
 
-# =====================================================================
-# CONSULTA 4 — Rastreamento de Poneglyphs e Contexto Histórico
-# =====================================================================
 
-# =====================================================================
-# ESTATÍSTICAS RÁPIDAS (Corrigido: Zoans Abrangentes + Top Pirata)
-# =====================================================================
+# Consulta 4 — Rastreamento de Poneglyphs e Contexto Histórico
+
 
 st.sidebar.header("Estatísticas do Mundo")
 
-# --- 1. RECORDES DE RECOMPENSA ---
-st.sidebar.subheader("💰 Os Mais Procurados")
+#Recordes de recompensa
+st.sidebar.subheader("Os Mais Procurados")
 
 # Consulta para Maior Bando e Maior Pirata
 query_recordes = """
@@ -325,9 +303,9 @@ if not recordes_df.empty:
         delta=nome_pirata
     )
 
-# --- 2. POPULAÇÃO E FRUTAS ---
+#Pop e frutas
 st.sidebar.markdown("---")
-st.sidebar.subheader("👥 População & Poder")
+st.sidebar.subheader("População & Poder")
 
 # Nota: Usamos ILIKE '%Zoan%' para pegar 'Zoan Mítica', 'Zoan Ancestral', etc.
 query_counts = """
@@ -342,24 +320,24 @@ query_counts = """
 counts_df = run_query(query_counts)
 
 if not counts_df.empty:
-    # Linha 1: Totais Gerais
+    #Totais Gerais
     c1, c2 = st.sidebar.columns(2)
-    c1.metric("🏴‍☠️ Piratas", counts_df.iloc[0]['qtd_piratas'])
-    c2.metric("⚓ Marinha", counts_df.iloc[0]['qtd_marinha'])
+    c1.metric(" Piratas", counts_df.iloc[0]['qtd_piratas'])
+    c2.metric("Marinha", counts_df.iloc[0]['qtd_marinha'])
     
     st.sidebar.markdown("---")
-    # Linha 2: Detalhe Akuma no Mi
-    st.sidebar.markdown("**🍎 Akuma no Mi (Distribuição)**")
+    # Detalhe Akuma no Mi
+    st.sidebar.markdown("**Akuma no Mi (Distribuição)**")
     col_f1, col_f2, col_f3 = st.sidebar.columns(3)
     
-    # Exibe as métricas
+    #métricas
     col_f1.metric("Paramecia", counts_df.iloc[0]['qtd_paramecia'])
     col_f2.metric("Zoan", counts_df.iloc[0]['qtd_zoan'], help="Inclui Míticas, Ancestrais e Artificiais")
     col_f3.metric("Logia", counts_df.iloc[0]['qtd_logia'])
 
-# --- 3. GEOGRAFIA E NAVIOS ---
+#Geografia e navios
 st.sidebar.markdown("---")
-st.sidebar.subheader("🌍 Geografia & Navios")
+st.sidebar.subheader(" Geografia & Navios")
 
 query_geo = """
     SELECT 
