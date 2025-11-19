@@ -21,6 +21,27 @@ def run_query(query):
         return pd.DataFrame(data, columns=columns)
 
 # =====================================================================
+# CONFIGURAÇÃO DE FORMATAÇÃO DE COLUNAS
+# =====================================================================
+
+# Dicionário para renomear as colunas para um formato mais legível
+col_names = {
+    'nomepersonagem': 'Nome do Personagem',
+    'recompensa': 'Recompensa',
+    'nomebando': 'Nome do Bando',
+    'nomealianca': 'Nome da Aliança',
+    'nomenavio': 'Nome do Navio',
+    'alcunha': 'Alcunha',
+    'recompensaindividual': 'Recompensa Individual',
+    'recompensatotalbando': 'Recompensa Total do Bando',
+    'nomeespecie': 'Espécie',
+    'nomefruta': 'Nome da Fruta',
+    'tipofruta': 'Tipo da Fruta',
+    'recompensacombinada': 'Recompensa Combinada',
+    'rn': 'Ranking'
+}
+
+# =====================================================================
 # INTERFACE PRINCIPAL
 # =====================================================================
 
@@ -28,60 +49,6 @@ st.set_page_config(page_title="One Piece Database Dashboard 🏴‍☠️", layo
 
 st.title("One Piece Database Dashboard 🏴‍☠️")
 st.markdown("## Análise de Recompensas e Afilições")
-
-# =====================================================================
-# FILTRO INICIAL POR BANDO (CÓDIGO ORIGINAL)
-# =====================================================================
-
-st.sidebar.header("Filtros de Busca")
-
-bandos_df = run_query("SELECT NomeBando FROM Bando ORDER BY NomeBando;")
-bandos = bandos_df['nomebando'].tolist()
-bandos.insert(0, "Todos os Bandos")
-
-selected_bando = st.sidebar.selectbox("Selecione o Bando:", bandos)
-
-if selected_bando == "Todos os Bandos":
-    query_piratas = """
-        SELECT
-            p.NomePersonagem,
-            p.Recompensa,
-            b.NomeBando,
-            a.NomeAlianca,
-            n.NomeNavio
-        FROM Pirata p
-        LEFT JOIN Bando b ON p.NomeBando = b.NomeBando
-        LEFT JOIN Alianca a ON b.NomeAlianca = a.NomeAlianca
-        LEFT JOIN Navio n ON b.NomeBando = n.NomeBando
-        ORDER BY p.Recompensa DESC;
-    """
-    st.subheader("Todos os Piratas")
-else:
-    query_piratas = f"""
-        SELECT
-            p.NomePersonagem,
-            p.Recompensa,
-            b.NomeBando,
-            a.NomeAlianca,
-            n.NomeNavio
-        FROM Pirata p
-        JOIN Bando b ON p.NomeBando = b.NomeBando
-        LEFT JOIN Alianca a ON b.NomeAlianca = a.NomeAlianca
-        LEFT JOIN Navio n ON b.NomeBando = n.NomeBando
-        WHERE b.NomeBando = '{selected_bando}'
-        ORDER BY p.Recompensa DESC;
-    """
-    st.subheader(f"Piratas do Bando: {selected_bando}")
-
-piratas_df = run_query(query_piratas)
-
-if not piratas_df.empty:
-    st.dataframe(piratas_df)
-    st.markdown("---")
-    st.subheader("Visualização da Recompensa por Pirata")
-    st.bar_chart(piratas_df.set_index('nomepersonagem')['recompensa'])
-else:
-    st.warning("Nenhum pirata encontrado.")
 
 # =====================================================================
 # =====================================================================
@@ -121,7 +88,8 @@ query_piratas_por_bando = f"""
 piratas_bando_df = run_query(query_piratas_por_bando)
 
 if not piratas_bando_df.empty:
-    st.dataframe(piratas_bando_df)
+    # Aplica a renomeação
+    st.dataframe(piratas_bando_df.rename(columns=col_names))
 else:
     st.info("Nenhum pirata encontrado com essa recompensa total de bando mínima.")
 
@@ -178,7 +146,8 @@ personagens_fruta_df = run_query(query_personagens_fruta)
 
 # 5. Mostrar
 if not personagens_fruta_df.empty:
-    st.dataframe(personagens_fruta_df)
+    # Aplica a renomeação
+    st.dataframe(personagens_fruta_df.rename(columns=col_names))
 else:
     st.info("Nenhum personagem encontrado com os filtros aplicados.")
 
@@ -229,20 +198,28 @@ capitaes_df = run_query(query_capitaes)
 
 # Exibir
 if not capitaes_df.empty:
-    st.dataframe(capitaes_df)
+    # Aplica a renomeação
+    st.dataframe(capitaes_df.rename(columns=col_names))
 else:
     st.info("Nenhum capitão encontrado com esse filtro.")
 
 st.markdown("---")
 
-# =====================================================================
-# CONSULTA 4 — Periculosidade do Bando (TOP 3)
-# =====================================================================
 
-st.markdown("##  Periculosidade do Bando – TOP 3 Recompensas Mais Altas")
+
+st.markdown("## Periculosidade do Bando – Soma das Maiores Recompensas")
+
+# 1. Novo slider para definir o 'N' (quantos membros somar)
+num_membros = st.slider(
+    "Considerar os N membros com maiores recompensas:",
+    min_value=1,
+    max_value=20,
+    value=3, # Valor padrão (Top 3)
+    step=1
+)
 
 min_perigo = st.slider(
-    "Índice mínimo de periculosidade (soma do TOP 3):",
+    f"Recompensa Combinada Mínima (Soma do TOP {num_membros}):",
     min_value=0,
     max_value=10000000000,
     value=0,
@@ -252,7 +229,7 @@ min_perigo = st.slider(
 filtro_alianca2 = st.selectbox("Filtrar por aliança (Periculosidade):", aliancas)
 
 query_perigo = f"""
-    WITH top3_por_bando AS (
+    WITH rank_piratas AS (
         SELECT
             NomeBando,
             NomePersonagem,
@@ -266,10 +243,10 @@ query_perigo = f"""
     SELECT 
         b.NomeBando,
         b.NomeAlianca,
-        SUM(t3.Recompensa) AS PericulosidadeTOP3
-    FROM top3_por_bando t3
-    JOIN Bando b ON b.NomeBando = t3.NomeBando
-    WHERE t3.rn <= 3
+        SUM(rp.Recompensa) AS RecompensaCombinada
+    FROM rank_piratas rp
+    JOIN Bando b ON b.NomeBando = rp.NomeBando
+    WHERE rp.rn <= {num_membros}
 """
 
 if filtro_alianca2 != "Todas":
@@ -277,38 +254,121 @@ if filtro_alianca2 != "Todas":
 
 query_perigo += f"""
 GROUP BY b.NomeBando, b.NomeAlianca
-HAVING SUM(t3.Recompensa) >= {min_perigo}
-ORDER BY PericulosidadeTOP3 DESC;
+HAVING SUM(rp.Recompensa) >= {min_perigo}
+ORDER BY RecompensaCombinada DESC;
 """
 
 perigo_df = run_query(query_perigo)
 
 if not perigo_df.empty:
-    st.dataframe(perigo_df)
+    # Renomeia as colunas antes de exibir
+    perigo_display = perigo_df.rename(columns=col_names)
+    
+    st.dataframe(
+        perigo_display,
+        column_config={
+            # Nota: Aqui usamos o NOVO nome da coluna após o rename
+            "Recompensa Combinada": st.column_config.NumberColumn(
+                f"Soma (Top {num_membros})",
+                format="$%d" # Formata como moeda
+            )
+        }
+    )
 else:
-    st.info("Nenhum bando encontrado com esse índice de periculosidade.")
+    st.info("Nenhum bando encontrado com esse critério.")
 
 st.markdown("---")
 
 # =====================================================================
-# ESTATÍSTICAS RÁPIDAS (original)
+# CONSULTA 4 — Rastreamento de Poneglyphs e Contexto Histórico
 # =====================================================================
 
-st.sidebar.markdown("---")
-st.sidebar.header("Estatísticas Rápidas")
+# =====================================================================
+# ESTATÍSTICAS RÁPIDAS (Corrigido: Zoans Abrangentes + Top Pirata)
+# =====================================================================
 
-query_max_recompensa = """
-SELECT NomeBando, RecompensaTotalBando 
-FROM Bando 
-ORDER BY RecompensaTotalBando DESC LIMIT 1;
+st.sidebar.header("Estatísticas do Mundo")
+
+# --- 1. RECORDES DE RECOMPENSA ---
+st.sidebar.subheader("💰 Os Mais Procurados")
+
+# Consulta para Maior Bando e Maior Pirata
+query_recordes = """
+    SELECT 
+        -- Maior Bando
+        (SELECT NomeBando FROM Bando ORDER BY RecompensaTotalBando DESC LIMIT 1) as nome_bando,
+        (SELECT RecompensaTotalBando FROM Bando ORDER BY RecompensaTotalBando DESC LIMIT 1) as valor_bando,
+        -- Maior Pirata
+        (SELECT p.NomePersonagem FROM Pirata pi JOIN Personagem p ON pi.NomePersonagem = p.NomePersonagem ORDER BY pi.Recompensa DESC LIMIT 1) as nome_pirata,
+        (SELECT Recompensa FROM Pirata ORDER BY Recompensa DESC LIMIT 1) as valor_pirata
 """
+recordes_df = run_query(query_recordes)
 
-max_recompensa_df = run_query(query_max_recompensa)
-if not max_recompensa_df.empty:
-    max_bando = max_recompensa_df.iloc[0]['nomebando']
-    max_valor = max_recompensa_df.iloc[0]['recompensatotalbando']
+if not recordes_df.empty:
+    # Dados do Bando
+    nome_bando = recordes_df.iloc[0]['nome_bando']
+    valor_bando = recordes_df.iloc[0]['valor_bando']
+    
+    # Dados do Pirata
+    nome_pirata = recordes_df.iloc[0]['nome_pirata']
+    valor_pirata = recordes_df.iloc[0]['valor_pirata']
+
     st.sidebar.metric(
-        label="Maior Recompensa Total de Bando",
-        value=f"B$ {max_valor:,.0f}",
-        delta=max_bando
+        label="Maior Recompensa (Bando)",
+        value=f"B$ {valor_bando:,.0f}",
+        delta=nome_bando
     )
+    
+    st.sidebar.metric(
+        label="Maior Recompensa (Individual)",
+        value=f"B$ {valor_pirata:,.0f}",
+        delta=nome_pirata
+    )
+
+# --- 2. POPULAÇÃO E FRUTAS ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("👥 População & Poder")
+
+# Nota: Usamos ILIKE '%Zoan%' para pegar 'Zoan Mítica', 'Zoan Ancestral', etc.
+query_counts = """
+    SELECT 
+        (SELECT COUNT(*) FROM Pirata) as qtd_piratas,
+        (SELECT COUNT(*) FROM Marinheiro) as qtd_marinha,
+        (SELECT COUNT(*) FROM AkumaNoMi) as qtd_frutas,
+        (SELECT COUNT(*) FROM AkumaNoMi WHERE TipoFruta ILIKE '%Logia%') as qtd_logia,
+        (SELECT COUNT(*) FROM AkumaNoMi WHERE TipoFruta ILIKE '%Zoan%') as qtd_zoan,
+        (SELECT COUNT(*) FROM AkumaNoMi WHERE TipoFruta ILIKE '%Paramecia%') as qtd_paramecia
+"""
+counts_df = run_query(query_counts)
+
+if not counts_df.empty:
+    # Linha 1: Totais Gerais
+    c1, c2 = st.sidebar.columns(2)
+    c1.metric("🏴‍☠️ Piratas", counts_df.iloc[0]['qtd_piratas'])
+    c2.metric("⚓ Marinha", counts_df.iloc[0]['qtd_marinha'])
+    
+    st.sidebar.markdown("---")
+    # Linha 2: Detalhe Akuma no Mi
+    st.sidebar.markdown("**🍎 Akuma no Mi (Distribuição)**")
+    col_f1, col_f2, col_f3 = st.sidebar.columns(3)
+    
+    # Exibe as métricas
+    col_f1.metric("Paramecia", counts_df.iloc[0]['qtd_paramecia'])
+    col_f2.metric("Zoan", counts_df.iloc[0]['qtd_zoan'], help="Inclui Míticas, Ancestrais e Artificiais")
+    col_f3.metric("Logia", counts_df.iloc[0]['qtd_logia'])
+
+# --- 3. GEOGRAFIA E NAVIOS ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("🌍 Geografia & Navios")
+
+query_geo = """
+    SELECT 
+        (SELECT COUNT(*) FROM Ilha) as total_ilhas,
+        (SELECT COUNT(*) FROM Navio WHERE Navegando = TRUE) as navios_ativos
+"""
+geo_df = run_query(query_geo)
+
+if not geo_df.empty:
+    g1, g2 = st.sidebar.columns(2)
+    g1.metric("Ilhas Registradas", geo_df.iloc[0]['total_ilhas'])
+    g2.metric("Navios no Mar", geo_df.iloc[0]['navios_ativos'])
