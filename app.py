@@ -6,11 +6,7 @@ import os
 import plotly.express as px
 from sklearn.cluster import KMeans
 
-#load_dotenv()
-
-#DATABASE_URL = os.getenv("DATABASE_URL")
-#st.write("DATABASE_URL:", DATABASE_URL)
-DATABASE_URL = "postgresql://neondb_owner:npg_Iflxy7RMmnH6@ep-delicate-resonance-ahxuy5yh-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 @st.cache_resource
 def init_connection():
@@ -276,6 +272,75 @@ with aba_consultas:
 
     # Consulta 4 — Rastreamento de Poneglyphs e Contexto Histórico
 
+    st.markdown("## 🗺️ Rastreamento de Poneglyphs e História Antiga")
+
+    st.markdown("""
+    Esta seção cruza a localização dos **Poneglyphs** com as **Ilhas**, a **Afiliação Política** do território 
+    e a **Região** onde se encontram.
+    """)
+
+    # Filtros para Poneglyphs
+    tipos_poneglyph_df = run_query("SELECT DISTINCT unnest(enum_range(NULL::tipo_poneglyph)) as tipo;")
+    areas_df = run_query("SELECT DISTINCT NomeArea FROM Area ORDER BY NomeArea;")
+
+    tipos_poneglyph = ["Todos"] + tipos_poneglyph_df["tipo"].tolist()
+    areas = ["Todas"] + areas_df["nomearea"].tolist()
+
+    col_p1, col_p2 = st.columns(2)
+
+    with col_p1:
+        filtro_tipo_pone = st.selectbox("Tipo de Poneglyph:", tipos_poneglyph)
+
+    with col_p2:
+        filtro_area = st.selectbox("Região (Área do Mar):", areas)
+
+    # Query Simplificada (Sem JOIN com Capítulos)
+    query_poneglyphs = """
+        SELECT 
+            p.Tipo,
+            p.Conteudo,
+            i.NomeIlha,
+            i.Filiacao AS FiliacaoPolitica,
+            a.NomeArea
+        FROM Poneglyph p
+        JOIN Ilha i ON p.NomeIlha = i.NomeIlha
+        JOIN Area a ON i.NomeArea = a.NomeArea
+    """
+
+    condicoes_pone = []
+    if filtro_tipo_pone != "Todos":
+        condicoes_pone.append(f"p.Tipo = '{filtro_tipo_pone}'")
+    if filtro_area != "Todas":
+        condicoes_pone.append(f"a.NomeArea = '{filtro_area}'")
+
+    if condicoes_pone:
+        query_poneglyphs += " WHERE " + " AND ".join(condicoes_pone)
+
+    query_poneglyphs += " ORDER BY p.Tipo, i.NomeIlha;"
+
+    poneglyphs_df = run_query(query_poneglyphs)
+
+    # Dicionário simplificado para renomear colunas
+    col_names_pone = {
+        'tipo': 'Tipo de Poneglyph',
+        'conteudo': 'Conteúdo/Detalhe',
+        'nomeilha': 'Localização (Ilha)',
+        'filiacaopolitica': 'Controle da Ilha',
+        'nomearea': 'Mar/Região'
+    }
+
+    if not poneglyphs_df.empty:
+        # Exibe a tabela renomeada
+        st.dataframe(poneglyphs_df.rename(columns=col_names_pone))
+        
+        # Visualização gráfica da distribuição por região
+        st.markdown("### Distribuição de Poneglyphs por Região")
+        distribuicao = poneglyphs_df['nomearea'].value_counts()
+        st.bar_chart(distribuicao)
+    else:
+        st.info("Nenhum Poneglyph encontrado com os filtros selecionados.")
+
+    st.markdown("---")
 
     st.sidebar.header("Estatísticas do Mundo")
 
