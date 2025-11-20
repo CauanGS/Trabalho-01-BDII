@@ -365,156 +365,319 @@ with aba_consultas:
 
 
 # Análise estatística e visualização
+def stats_piratas():
+    st.header("giPiratas — Estatísticas")
 
-def estatisticas_completas(df):
-    st.subheader("Estatísticas Descritivas Completas")
+    df_count = run_query("SELECT COUNT(*) AS total_piratas FROM pirata;")
+    st.metric("Total de Piratas", int(df_count.iloc[0]['total_piratas']))
 
-    media = df["Recompensa"].mean()
-    mediana = df["Recompensa"].median()
-    variancia = df["Recompensa"].var()
-    desvio = df["Recompensa"].std()
-    minimo = df["Recompensa"].min()
-    maximo = df["Recompensa"].max()
-    soma = df["Recompensa"].sum()
-    contagem = df["Recompensa"].count()
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Média", f"{media:,.0f}")
-    c2.metric("Mediana", f"{mediana:,.0f}")
-    c3.metric("Desvio Padrão", f"{desvio:,.0f}")
-
-    c4, c5, c6 = st.columns(3)
-    c4.metric("Mínimo", f"{minimo:,.0f}")
-    c5.metric("Máximo", f"{maximo:,.0f}")
-    c6.metric("Soma Total", f"{soma:,.0f}")
-
-    st.write(f"**Variância:** {variancia:,.2f}")
-    st.write(f"**Quantidade de Piratas analisados:** {contagem}")
-
-def media_por_tipo_fruta():
-    st.subheader(" Recompensa Média por Tipo de Akuma no Mi")
-
-    query = """
-        SELECT 
-            a.TipoFruta,
-            AVG(p.Recompensa) AS MediaRecompensa
-        FROM Pirata p
-        JOIN Posse_Fruta pf ON p.NomePersonagem = pf.NomePersonagem
-        JOIN AkumaNoMi a ON pf.NomeFruta = a.NomeFruta
-        GROUP BY a.TipoFruta
-        ORDER BY MediaRecompensa DESC;
+    q = """
+    SELECT
+        AVG(recompensa) AS media,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY recompensa) AS mediana,
+        STDDEV(recompensa) AS desvio,
+        MIN(recompensa) AS minimo,
+        MAX(recompensa) AS maximo
+    FROM pirata;
     """
+    stats = run_query(q)
 
-    df = run_query(query)
+    row = stats.iloc[0]
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Média", f"{row['media']:,}")
+    c2.metric("Mediana", f"{row['mediana']:,}")
+    c3.metric("Desvio Padrão", f"{row['desvio']:,}")
+    c4.metric("Menor", f"{row['minimo']:,}")
+    c5.metric("Maior", f"{row['maximo']:,}")
 
-    if not df.empty:
-        fig = px.bar(
-            df,
-            x="tipofruta",
-            y="mediarecompensa",
-            title="Recompensa Média por Tipo de Fruta",
-            text="mediarecompensa"
-        )
+    # Top 10 piratas
+    top10 = run_query("""
+        SELECT nomepersonagem AS nomepirata, recompensa AS recompensa
+        FROM pirata
+        ORDER BY recompensa DESC
+        LIMIT 10;
+    """)
+
+    if not top10.empty:
+        st.subheader("Top 10 Piratas por Recompensa")
+        fig = px.bar(top10, x="nomepirata", y="recompensa", text="recompensa")
+        fig.update_traces(texttemplate='%{text:,}')
         st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(top10)
+
+    shichi = run_query("SELECT COUNT(*) AS total_shichibukai FROM Pirata WHERE Shichibukai = TRUE;")
+    if not shichi.empty:
+        st.metric("Shichibukai", int(shichi.iloc[0]['total_shichibukai']))
+
+
+def stats_bandos():
+    st.header("Bandos — Análises")
+
+    total = run_query("SELECT COUNT(*) AS total_bandos FROM bando;")
+    st.metric("Total de Bandos", int(total.iloc[0]['total_bandos']))
+
+    avg = run_query("SELECT AVG(recompensatotalbando) AS media_bando FROM bando;")
+    st.metric("Média de Recompensa Total", f"{avg.iloc[0]['media_bando']:,}")
+
+    # Top bandos
+    top = run_query("""
+        SELECT nomebando, recompensatotalbando
+        FROM bando
+        ORDER BY recompensatotalbando DESC
+        LIMIT 10;
+    """)
+
+    if not top.empty:
+        fig = px.bar(
+            top,
+            y="nomebando",
+            x="recompensatotalbando",
+            orientation="h",
+            text="recompensatotalbando"
+        )
+        fig.update_layout(yaxis={"categoryorder": "total ascending"})
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(top)
+
+    # Relação capitão vs bando
+    rel = run_query("""
+        SELECT 
+            b.nomebando,
+            p.recompensa AS recompensacapitao,
+            b.recompensatotalbando,
+            CASE 
+                WHEN p.recompensa > 0 THEN ROUND(b.recompensatotalbando::numeric / p.recompensa::numeric, 2)
+                ELSE NULL
+            END AS multiplicador
+        FROM bando b
+        JOIN pirata p ON p.nomepersonagem = b.piratacapitao
+        ORDER BY multiplicador DESC NULLS LAST;
+    """)
+
+    if not rel.empty:
+        st.subheader("Multiplicador: Capitão vs Bando")
+        st.dataframe(rel)
+
+def stats_aliancas():
+    st.header("Alianças")
+
+    total = run_query("SELECT COUNT(*) AS total_aliancas FROM alianca;")
+    st.metric("Total de Alianças", int(total.iloc[0]['total_aliancas']))
+
+    top = run_query("""
+        SELECT nomealianca, recompensatotalalianca
+        FROM alianca
+        ORDER BY recompensatotalalianca DESC;
+    """)
+
+    if not top.empty:
+        fig = px.bar(top, x="nomealianca", y="recompensatotalalianca", text="recompensatotalalianca")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(top)
+
+    bandos = run_query("""
+        SELECT nomealianca, COUNT(*) AS total_bandos
+        FROM bando
+        WHERE nomealianca IS NOT NULL
+        GROUP BY nomealianca;
+    """)
+
+    if not bandos.empty:
+        st.subheader("Bandos por Aliança")
+        st.dataframe(bandos)
+
+def stats_frutas():
+    st.header("Akuma no Mi")
+
+    cnt = run_query("SELECT COUNT(*) AS total_frutas FROM akumanomi;")
+    st.metric("Total de Frutas", int(cnt.iloc[0]['total_frutas']))
+
+    tipos = run_query("""
+        SELECT tipofruta, COUNT(*) AS total
+        FROM akumanomi
+        GROUP BY tipofruta;
+    """)
+
+    if not tipos.empty:
+        fig = px.pie(tipos, names="tipofruta", values="total")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(tipos)
+
+    media = run_query("""
+        SELECT 
+            a.tipofruta,
+            AVG(p.recompensa) AS mediarecompensa
+        FROM pirata p
+        JOIN posse_fruta pf ON p.nomepersonagem = pf.nomepersonagem
+        JOIN akumanomi a ON pf.nomefruta = a.nomefruta
+        GROUP BY a.tipofruta
+        ORDER BY mediarecompensa DESC;
+    """)
+
+    if not media.empty:
+        fig = px.bar(media, x="tipofruta", y="mediarecompensa", text="mediarecompensa")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(media)
+
+def stats_especies():
+    st.header("Espécies")
+
+    qtd = run_query("SELECT COUNT(*) AS total_especies FROM especie;")
+    st.metric("Total de Espécies", int(qtd.iloc[0]['total_especies']))
+
+    personagens = run_query("""
+        SELECT nomeespecie, COUNT(*) AS total_personagens
+        FROM filiacao_especie
+        GROUP BY nomeespecie
+        ORDER BY total_personagens DESC;
+    """)
+
+    if not personagens.empty:
+        st.subheader("Personagens por Espécie")
+        st.dataframe(personagens)
+
+    media = run_query("""
+        SELECT fe.nomeespecie, AVG(p.recompensa) AS mediarecompensa
+        FROM pirata p
+        JOIN filiacao_especie fe ON p.nomepersonagem = fe.nomepersonagem
+        GROUP BY fe.nomeespecie
+        ORDER BY mediarecompensa DESC;
+    """)
+
+    if not media.empty:
+        fig = px.bar(media, x="nomeespecie", y="mediarecompensa")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(media)
+
+def stats_navios():
+    st.header("Navios")
+
+    total = run_query("SELECT COUNT(*) AS total_navios FROM navio;")
+    st.metric("Total de Navios", int(total.iloc[0]['total_navios']))
+
+    por_bando = run_query("""
+        SELECT nomebando, COUNT(*) AS total_navios
+        FROM navio
+        GROUP BY nomebando;
+    """)
+
+    st.subheader("Navios por Bando")
+    st.dataframe(por_bando)
+
+
+def stats_ilhas_capitulos():
+    st.header("Ilhas & Capítulos")
+
+    ilhas = run_query("SELECT COUNT(*) AS total_ilhas FROM ilha;")
+    st.metric("Total de Ilhas", int(ilhas.iloc[0]['total_ilhas']))
+
+    cap = run_query("""
+        SELECT nomeilha, COUNT(*) AS total_capitulos
+        FROM localizacao_capitulo
+        GROUP BY nomeilha;
+    """)
+
+    if not cap.empty:
+        st.subheader("Capítulos por Ilha")
+        st.dataframe(cap)
+
+    aparicoes = run_query("""
+        SELECT nomepersonagem, COUNT(*) AS aparicoes
+        FROM aparicao_em_capitulo
+        GROUP BY nomepersonagem
+        ORDER BY aparicoes DESC
+        LIMIT 10;
+    """)
+
+    if not aparicoes.empty:
+        st.subheader("Personagens com mais aparições")
+        st.dataframe(aparicoes)
+
+
+def stats_habilidades():
+    st.header("Habilidades")
+
+    total = run_query("SELECT COUNT(*) AS total_habs FROM habilidade;")
+    st.metric("Total de Habilidades", int(total.iloc[0]['total_habs']))
+
+    ranking = run_query("""
+        SELECT nomepersonagem, COUNT(*) AS qtd_habs
+        FROM lista_habilidade
+        GROUP BY nomepersonagem
+        ORDER BY qtd_habs DESC
+        LIMIT 10;
+    """)
+
+    if not ranking.empty:
+        st.subheader("Personagens com mais habilidades")
+        st.dataframe(ranking)
+
+def stats_clusters_outliers():
+    st.header("Clusters e Outliers")
+
+    df = run_query("SELECT nomepersonagem AS nomepirata, recompensa AS recompensaindividual FROM pirata;")
+
+    # cluster
+    X = df[["recompensaindividual"]].dropna()
+
+    if X.empty:
+        st.info("Dados insuficientes.")
     else:
-        st.info("Nenhum dado de frutas encontrado.")
+        k = st.slider("Número de clusters", 2, 8, 3)
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        df["cluster"] = kmeans.fit_predict(X)
 
-def media_por_especie():
-    st.subheader(" Recompensa Média por Espécie")
-
-    query = """
-        SELECT 
-            f.NomeEspecie,
-            AVG(p.Recompensa) AS MediaRecompensa
-        FROM Pirata p
-        JOIN Filiacao_Especie f ON p.NomePersonagem = f.NomePersonagem
-        GROUP BY f.NomeEspecie
-        ORDER BY MediaRecompensa DESC;
-    """
-
-    df = run_query(query)
-
-    if not df.empty:
-        fig = px.bar(
-            df,
-            x="nomeespecie",
-            y="mediarecompensa",
-            title="Recompensa Média por Espécie",
-            text="mediarecompensa"
-        )
+        fig = px.scatter(df, x=df.index, y="recompensaindividual", color="cluster",
+                         hover_name="nomepirata")
         st.plotly_chart(fig, use_container_width=True)
 
-def correlacao_recompensas(df):
-    st.subheader("🔗 Correlação entre Recompensa Individual e Recompensa Total do Bando")
-
-    query = """
-        SELECT 
-            p.Recompensa AS Recompensa,
-            b.RecompensaTotalBando
-        FROM Pirata p
-        JOIN Bando b ON p.NomeBando = b.NomeBando;
-    """
-
-    df_corr = run_query(query)
-
-    if not df_corr.empty:
-        fig = px.scatter(
-            df_corr,
-            x="Recompensa",
-            y="recompensatotalbando",
-            trendline="ols",
-            title="Correlação de Recompensas"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        corr_value = df_corr["Recompensa"].corr(df_corr["recompensatotalbando"])
-        st.write(f"📌 **Correlação (Pearson):** `{corr_value:.3f}`")
-
-def detectar_outliers(df):
-    st.subheader(" Piratas Fora da Curva (Outliers)")
-
-    q1 = df["Recompensa"].quantile(0.25)
-    q3 = df["Recompensa"].quantile(0.75)
+    # outliers
+    q1 = df["recompensaindividual"].quantile(0.25)
+    q3 = df["recompensaindividual"].quantile(0.75)
     iqr = q3 - q1
+    limite = q3 + 1.5 * iqr
 
-    limite_superior = q3 + 1.5 * iqr
+    outliers = df[df["recompensaindividual"] > limite]
 
-    outliers = df[df["Recompensa"] > limite_superior]
-
-    if not outliers.empty:
-        st.write("### Piratas com Recompensa muito acima da média:")
-        st.dataframe(outliers)
-    else:
-        st.info("Nenhum outlier encontrado.")
-
-def clusterizacao_recompensas(df):
-    st.subheader(" Clusterização (K-Means) por Recompensa")
-
-    X = df[["Recompensa"]]
-
-    kmeans = KMeans(n_clusters=3, random_state=42)
-    df["Cluster"] = kmeans.fit_predict(X)
-
-    fig = px.scatter(
-        df,
-        x=df.index,
-        y="Recompensa",
-        color="Cluster",
-        title="Clusters de Recompensa"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-with aba_estatisticas:
-    st.header("Estatísticas Avançadas")
-
-    df_piratas = run_query("SELECT NomePersonagem, Recompensa FROM Pirata")
-
-    estatisticas_completas(df_piratas)
-    media_por_tipo_fruta()
-    media_por_especie()
-    correlacao_recompensas(df_piratas)
-    detectar_outliers(df_piratas)
-    clusterizacao_recompensas(df_piratas)
+    st.subheader("Outliers")
+    st.dataframe(outliers)
 
 
+tabs_extra = st.tabs([
+    "Piratas",
+    "Bandos",
+    "Alianças",
+    "Akuma no Mi",
+    "Espécies",
+    "Navios",
+    "Ilhas & Capítulos",
+    "Habilidades",
+    "Clusters & Outliers"
+])
 
+with tabs_extra[0]:
+    stats_piratas()
+
+with tabs_extra[1]:
+    stats_bandos()
+
+with tabs_extra[2]:
+    stats_aliancas()
+
+with tabs_extra[3]:
+    stats_frutas()
+
+with tabs_extra[4]:
+    stats_especies()
+
+with tabs_extra[5]:
+    stats_navios()
+
+with tabs_extra[6]:
+    stats_ilhas_capitulos()
+
+with tabs_extra[7]:
+    stats_habilidades()
+
+with tabs_extra[8]:
+    stats_clusters_outliers()
